@@ -54,6 +54,24 @@ public class ChoLibAPI {
         return ShiftManager.getInstance().getCooldownTicks(modId);
     }
 
+    // Progress bar provider
+
+    public static void setProgressBarProvider(String modId, ProgressBarProvider provider) {
+        ShiftManager.getInstance().setProgressBarProvider(modId, provider);
+    }
+
+    public static ProgressBarProvider getProgressBarProvider(String modId) {
+        return ShiftManager.getInstance().getProgressBarProvider(modId);
+    }
+
+    public static void setProgressBarProvider(ProgressBarProvider provider) {
+        ShiftManager.getInstance().setProgressBarProvider(provider);
+    }
+
+    public static ProgressBarProvider getProgressBarProvider() {
+        return ShiftManager.getInstance().getProgressBarProvider();
+    }
+
     // Per-mod state
 
     public static void deactivate(String modId, UUID playerUuid) {

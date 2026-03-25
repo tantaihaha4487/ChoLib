@@ -24,19 +24,18 @@ import net.minecraft.item.Items;
 public class MyMod implements ModInitializer {
     @Override
     public void onInitialize() {
-        // Register diamond sword with shift ability
         ChoLibAPI.registerItem(
+            "mymod",
             Items.DIAMOND_SWORD,
             ShiftHand.MAIN_HAND,
             (player, stack, hand) -> {
-                // Dash ability
                 Vec3d look = player.getRotationVector();
                 player.addVelocity(look.x * 2, 0.5, look.z * 2);
                 player.getWorld().playSound(
-                    null, 
+                    null,
                     player.getX(), player.getY(), player.getZ(),
                     SoundEvents.ENTITY_PLAYER_ATTACK_SWEEP,
-                    SoundCategory.PLAYERS, 
+                    SoundCategory.PLAYERS,
                     1.0f, 1.0f
                 );
                 return ActionResult.SUCCESS;
@@ -48,78 +47,74 @@ public class MyMod implements ModInitializer {
 
 ## Registration Methods
 
-### Method 1: Register Item
-Register a specific item:
+### Register Item
 ```java
 ChoLibAPI.registerItem(
+    "mymod",
     Items.DIAMOND_SWORD,
     ShiftHand.MAIN_HAND,
     handler
 );
 ```
 
-### Method 2: Register Tag
-Register all items in a tag:
+### Register Tag
 ```java
 ChoLibAPI.registerTag(
+    "mymod",
     ItemTags.SWORDS,
     ShiftHand.MAIN_HAND,
     handler
 );
 ```
 
-### Method 3: Register Item Class
-Register custom item classes:
+### Register Item Class
 ```java
 ChoLibAPI.registerItemClass(
+    "mymod",
     MyCustomSword.class,
     ShiftHand.MAIN_HAND,
     handler
 );
 ```
 
-### Method 4: Register Predicate
-Register with custom conditions (component/data check):
+### Register Predicate
 ```java
 ChoLibAPI.registerPredicate(
-    stack -> stack.isOf(Items.DIAMOND_SWORD) 
+    "mymod",
+    stack -> stack.isOf(Items.DIAMOND_SWORD)
              && stack.getOrDefault(MyComponents.RARITY, 0) >= 5,
     ShiftHand.MAIN_HAND,
     handler
 );
 ```
 
+## The modId Parameter
+
+Every registration method takes a modId as the first parameter. This isolates your registrations from other mods using ChoLib, so your settings don't conflict with theirs.
+
 ## Configuration
 
-### Change Required Presses
 ```java
-// Require 15 presses instead of default 10
-ChoLibAPI.setMaxProgress(15);
-```
+// Require 15 presses for mymod
+ChoLibAPI.setMaxProgress("mymod", 15);
 
-### Change Timing
-```java
-// 5 second window (100 ticks at 20 TPS)
-ChoLibAPI.setWindowTicks(100);
+// 5 second window (100 ticks)
+ChoLibAPI.setWindowTicks("mymod", 100);
 
 // 3 second cooldown (60 ticks)
-ChoLibAPI.setCooldownTicks(60);
+ChoLibAPI.setCooldownTicks("mymod", 60);
+```
+
+Reading values:
+```java
+int presses = ChoLibAPI.getMaxProgress("mymod");
 ```
 
 ## Events
 
-### Monitor Registration
-```java
-ShiftItemRegisterEvent.EVENT.register((registrant, type, hand) -> {
-    System.out.println("Registered: " + type + " for hand " + hand);
-    return ActionResult.PASS;
-});
-```
-
 ### Monitor Progress
 ```java
-ShiftProgressEvent.EVENT.register((player, current, max, percent) -> {
-    // Cancel sequence for certain conditions
+ShiftProgressEvent.EVENT.register((player, current, max, percentage) -> {
     if (player.hasStatusEffect(StatusEffects.BLINDNESS)) {
         return ActionResult.FAIL;
     }
@@ -130,8 +125,6 @@ ShiftProgressEvent.EVENT.register((player, current, max, percent) -> {
 ### Monitor Activation
 ```java
 ShiftActivationEvent.EVENT.register((player, stack, hand) -> {
-    // Log activations
-    System.out.println(player.getName() + " activated " + stack.getItem());
     return ActionResult.PASS;
 });
 ```
@@ -139,7 +132,6 @@ ShiftActivationEvent.EVENT.register((player, stack, hand) -> {
 ### Handle Deactivation
 ```java
 ShiftDeactivationEvent.EVENT.register((player, stack, hand, reason) -> {
-    // Clean up effects when item is swapped or manually deactivated
     if (reason == ShiftDeactivationReason.ITEM_SWAP) {
         player.removeStatusEffect(StatusEffects.SPEED);
     }
@@ -150,14 +142,9 @@ ShiftDeactivationEvent.EVENT.register((player, stack, hand, reason) -> {
 ## Manual Deactivation
 
 ```java
-// Deactivate specific player
-ChoLibAPI.deactivate(player.getUuid());
-
-// Deactivate all players
-ChoLibAPI.deactivateAll();
-
-// Check if active
-boolean active = ChoLibAPI.isActive(player.getUuid());
+ChoLibAPI.deactivate("mymod", player.getUuid());
+ChoLibAPI.deactivateAll("mymod");
+boolean active = ChoLibAPI.isActive("mymod", player.getUuid());
 ```
 
 ## Default Settings
@@ -172,7 +159,7 @@ boolean active = ChoLibAPI.isActive(player.getUuid());
 
 1. **Player presses shift** while holding registered item
 2. **Press is recorded** in a sliding time window
-3. **Progress is shown** on action bar (e.g., `╞═══▰════╡ 50%`)
+3. **Progress is shown** on action bar (e.g., `╞▰════════╡ 50%`)
 4. **At threshold** (default: 10 presses), ability activates
 5. **Cooldown begins** (default: 2s), ignoring further shifts
 6. **Auto-deactivation** when player swaps items
@@ -181,38 +168,34 @@ boolean active = ChoLibAPI.isActive(player.getUuid());
 
 ```java
 public class MyMod implements ModInitializer {
-    
+
     @Override
     public void onInitialize() {
-        // Configure
-        ChoLibAPI.setMaxProgress(8);  // Faster activation
-        
-        // Register legendary sword
+        ChoLibAPI.setMaxProgress("mymod", 8);
+
         ChoLibAPI.registerPredicate(
-            stack -> stack.isOf(Items.DIAMOND_SWORD) 
+            "mymod",
+            stack -> stack.isOf(Items.DIAMOND_SWORD)
                      && stack.getName().getString().contains("Legendary"),
             ShiftHand.MAIN_HAND,
             (player, stack, hand) -> {
-                // Powerful ability
                 player.addStatusEffect(new StatusEffectInstance(
                     StatusEffects.STRENGTH, 200, 2
                 ));
                 player.addStatusEffect(new StatusEffectInstance(
                     StatusEffects.RESISTANCE, 200, 1
                 ));
-                
-                // Visual effects
+
                 player.getWorld().playSound(
                     null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.BLOCK_BEACON_ACTIVATE,
                     SoundCategory.PLAYERS, 1.0f, 1.5f
                 );
-                
+
                 return ActionResult.SUCCESS;
             }
         );
-        
-        // Handle deactivation
+
         ShiftDeactivationEvent.EVENT.register((player, stack, hand, reason) -> {
             player.removeStatusEffect(StatusEffects.STRENGTH);
             player.removeStatusEffect(StatusEffects.RESISTANCE);
@@ -222,13 +205,20 @@ public class MyMod implements ModInitializer {
 }
 ```
 
+## Handler Return Value
+
+The handler receives a vanilla `Hand` (not `ShiftHand`):
+
+- `ActionResult.SUCCESS` - activation succeeded, cooldown begins
+- `ActionResult.PASS` - activation did nothing, sequence continues
+- `ActionResult.FAIL` - cancels the sequence entirely
+
 ## Tips
 
-1. **Specific Hand**: Always specify `MAIN_HAND` or `OFF_HAND` - system checks main hand first
-2. **Handler Return**: Return `ActionResult.SUCCESS` to consume event, `ActionResult.PASS` to allow others
-3. **Performance**: Predicates are evaluated every shift press - keep them fast
-4. **Persistence**: Progress doesn't persist across item swaps or server restarts
-5. **Canceling**: Use `ShiftProgressEvent` to cancel sequences based on conditions
+1. **Use modId consistently**: All registrations and config for your mod should use the same modId
+2. **Predicates are fast**: They're evaluated every shift press
+3. **Progress doesn't persist**: Item swaps or server restarts reset progress
+4. **Cancel mid-sequence**: Use `ShiftProgressEvent` to cancel based on conditions
 
 ## Support
 

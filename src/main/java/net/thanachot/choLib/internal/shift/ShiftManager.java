@@ -20,6 +20,8 @@ import net.thanachot.choLib.internal.util.ActionBarHelper;
 
 import java.util.*;
 import java.util.function.Predicate;
+import net.thanachot.choLib.api.ProgressBarProvider;
+import java.util.function.Predicate;
 
 public class ShiftManager {
     private static final String GLOBAL_MOD_ID = "global";
@@ -34,6 +36,8 @@ public class ShiftManager {
     private final Map<ModPlayerKey, PlayerShiftTracker> playerTrackers;
     private final Map<ModPlayerKey, ActiveAbility> activeAbilities;
     private final Map<ShiftActivationHandler, String> handlerModIds;
+    private ProgressBarProvider defaultProgressBarProvider;
+    private final Map<String, ProgressBarProvider> modProgressBarProviders;
 
     private MinecraftServer server;
 
@@ -81,6 +85,8 @@ public class ShiftManager {
         playerTrackers = new HashMap<>();
         activeAbilities = new HashMap<>();
         handlerModIds = new HashMap<>();
+        modProgressBarProviders = new HashMap<>();
+        defaultProgressBarProvider = null;
 
         for (ShiftHand hand : ShiftHand.values()) {
             itemModIds.put(hand, new HashMap<>());
@@ -211,6 +217,24 @@ public class ShiftManager {
         return getCooldownTicks(GLOBAL_MOD_ID);
     }
 
+    // Progress bar provider
+
+    public void setProgressBarProvider(String modId, ProgressBarProvider provider) {
+        modProgressBarProviders.put(modId, provider);
+    }
+
+    public ProgressBarProvider getProgressBarProvider(String modId) {
+        return modProgressBarProviders.get(modId);
+    }
+
+    public void setProgressBarProvider(ProgressBarProvider provider) {
+        this.defaultProgressBarProvider = provider;
+    }
+
+    public ProgressBarProvider getProgressBarProvider() {
+        return defaultProgressBarProvider;
+    }
+
     // Core Logic
 
     public void handleSneak(ServerPlayerEntity player) {
@@ -242,7 +266,15 @@ public class ShiftManager {
         } else {
             int percentage = (pressCount * 100) / settings.maxProgress;
             if (ShiftProgressEvent.EVENT.invoker().onProgress(player, pressCount, settings.maxProgress, percentage) == ActionResult.FAIL) return;
-            ActionBarHelper.sendProgressBar(player, pressCount, settings.maxProgress, percentage);
+
+            ProgressBarProvider provider = getProgressBarProvider(modId);
+            Text bar;
+            if (provider != null) {
+                bar = provider.buildBar(player, pressCount, settings.maxProgress);
+            } else {
+                bar = ActionBarHelper.buildProgressBarAsText(player, pressCount, settings.maxProgress);
+            }
+            ActionBarHelper.sendActionBar(player, bar);
         }
     }
 

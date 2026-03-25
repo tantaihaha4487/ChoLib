@@ -35,6 +35,12 @@ public class ActionBarHelper {
         sendActionBar(player, Text.literal("Cooldown...").formatted(Formatting.RED));
     }
 
+    public static Text buildProgressBarAsText(ServerPlayerEntity player, int current, int max) {
+        int percentage = (max == 0) ? 0 : (current * 100) / max;
+        String bar = buildProgressBar(percentage);
+        return Text.literal(bar);
+    }
+
     private static String buildProgressBar(int percentage) {
         int rounded = Math.round(percentage);
         int filled = rounded / 10;
