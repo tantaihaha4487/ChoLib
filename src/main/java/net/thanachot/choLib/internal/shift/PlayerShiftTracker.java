@@ -1,15 +1,9 @@
 package net.thanachot.choLib.internal.shift;
 
-import net.minecraft.entity.player.PlayerEntity;
-
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.UUID;
 
-/**
- * Tracks shift presses for a single player.
- * Maintains a sliding window of press timestamps.
- */
 public class PlayerShiftTracker {
     private final UUID playerUuid;
     private final Deque<Long> pressTimestamps;
@@ -29,12 +23,6 @@ public class PlayerShiftTracker {
         this.cooldownTicks = cooldownTicks;
     }
 
-    /**
-     * Record a shift press.
-     *
-     * @param currentTick Current server tick
-     * @return Current press count in window, or 0 if on cooldown
-     */
     public int recordPress(long currentTick) {
         if (isOnCooldown) {
             if (currentTick - lastActivationTime >= cooldownTicks) {
@@ -51,23 +39,11 @@ public class PlayerShiftTracker {
         return pressTimestamps.size();
     }
 
-    /**
-     * Check if the player has reached the activation threshold.
-     *
-     * @param maxProgress Required number of presses
-     * @param currentTick Current server tick
-     * @return true if threshold reached
-     */
     public boolean checkActivation(int maxProgress, long currentTick) {
         cleanOldPresses(currentTick);
         return pressTimestamps.size() >= maxProgress;
     }
 
-    /**
-     * Mark ability as activated, starting cooldown.
-     *
-     * @param currentTick Current server tick
-     */
     public void activate(long currentTick) {
         lastActivationTime = currentTick;
         isOnCooldown = true;
@@ -75,9 +51,6 @@ public class PlayerShiftTracker {
         hasShownBar = false;
     }
 
-    /**
-     * Reset the tracker (clear all presses and cooldown).
-     */
     public void reset() {
         pressTimestamps.clear();
         lastActivationTime = 0;
@@ -85,24 +58,6 @@ public class PlayerShiftTracker {
         hasShownBar = false;
     }
 
-    /**
-     * Clean presses older than the window.
-     *
-     * @param currentTick Current server tick
-     */
-    private void cleanOldPresses(long currentTick) {
-        long cutoffTick = currentTick - windowTicks;
-        while (!pressTimestamps.isEmpty() && pressTimestamps.peekFirst() < cutoffTick) {
-            pressTimestamps.pollFirst();
-        }
-    }
-
-    /**
-     * Get current press count.
-     *
-     * @param currentTick Current server tick
-     * @return Number of presses in window
-     */
     public int getPressCount(long currentTick) {
         cleanOldPresses(currentTick);
         return pressTimestamps.size();
@@ -134,5 +89,12 @@ public class PlayerShiftTracker {
 
     public UUID getPlayerUuid() {
         return playerUuid;
+    }
+
+    private void cleanOldPresses(long currentTick) {
+        long cutoffTick = currentTick - windowTicks;
+        while (!pressTimestamps.isEmpty() && pressTimestamps.peekFirst() < cutoffTick) {
+            pressTimestamps.pollFirst();
+        }
     }
 }

@@ -12,10 +12,7 @@ public class ChoLib implements ModInitializer {
     @Override
     public void onInitialize() {
         LOGGER.info("Initializing ChoLib Shift Mechanism");
-        
-        // Initialize event listeners
         ShiftListener.init();
-        
         LOGGER.info("ChoLib Shift Mechanism initialized successfully");
     }
 }
