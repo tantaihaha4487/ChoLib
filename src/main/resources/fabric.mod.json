@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "id": "cho-lib",
+  "id": "cholib",
   "version": "${version}",
   "name": "ChoLib",
-  "description": "Seamlessly bridge Discord applications to your Minecraft whitelist using interactive Modals and one-click admin approval.",
+  "description": "",
   "authors": [],
   "contact": {},
   "license": "All-Rights-Reserved",
-  "icon": "assets/cho-lib/icon.png",
+  "icon": "assets/cholib/icon.png",
   "environment": "*",
   "entrypoints": {
     "fabric-datagen": [
@@ -18,7 +18,7 @@
     ]
   },
   "mixins": [
-    "cho-lib.mixins.json"
+    "cholib.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",

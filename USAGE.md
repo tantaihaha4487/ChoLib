@@ -172,7 +172,7 @@ boolean active = ChoLibAPI.isActive(player.getUuid());
 
 1. **Player presses shift** while holding registered item
 2. **Press is recorded** in a sliding time window
-3. **Progress is shown** on action bar (e.g., `█████░░░░░ 50%`)
+3. **Progress is shown** on action bar (e.g., `╞═══▰════╡ 50%`)
 4. **At threshold** (default: 10 presses), ability activates
 5. **Cooldown begins** (default: 2s), ignoring further shifts
 6. **Auto-deactivation** when player swaps items

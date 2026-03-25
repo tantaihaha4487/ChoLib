@@ -182,8 +182,8 @@ public class ShiftManager {
             return; // On cooldown
         }
 
-        // Check for activation
-        if (tracker.checkActivation(maxProgress, currentTick)) {
+        // Check for activation - use pressCount >= maxProgress directly
+        if (pressCount >= maxProgress) {
             // Fire activation event
             ActionResult activationResult = ShiftActivationEvent.EVENT.invoker().onActivate(
                 player, result.stack, result.hand
@@ -196,6 +196,14 @@ public class ShiftManager {
                 if (handlerResult == ActionResult.SUCCESS) {
                     tracker.activate(currentTick);
                     activeAbilities.put(playerUuid, new ActiveAbility(result.stack, result.hand));
+
+                    // Show success message
+                    ActionBarHelper.sendActivationSuccess(player);
+
+                    // Console logging like ShiroVerse
+                    String itemName = result.stack.getName().getString();
+                    String playerName = player.getName().getString();
+                    System.out.println("[ChoLib] " + itemName + " shift ability activated for " + playerName);
                 }
             }
         } else {

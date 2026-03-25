@@ -6,72 +6,68 @@ import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
-/**
- * Helper class for displaying progress on the action bar.
- */
 public class ActionBarHelper {
 
     private static final int BAR_LENGTH = 10;
-    private static final char FILLED_CHAR = '█';
-    private static final char EMPTY_CHAR = '░';
+    private static final String FILLED_BAR = Formatting.GREEN.toString();
+    private static final String EMPTY_BAR = Formatting.BLACK.toString();
+    private static final String TRANSITION_CHAR = Formatting.GREEN.toString();
 
-    /**
-     * Send a progress bar to the player's action bar.
-     *
-     * @param player The player to send to
-     * @param current Current progress
-     * @param max Maximum progress
-     * @param percentage Percentage (0-100)
-     */
     public static void sendProgressBar(ServerPlayerEntity player, int current, int max, int percentage) {
-        int filledBars = (current * BAR_LENGTH) / max;
-        int emptyBars = BAR_LENGTH - filledBars;
-
-        StringBuilder bar = new StringBuilder();
-        for (int i = 0; i < filledBars; i++) {
-            bar.append(FILLED_CHAR);
-        }
-        for (int i = 0; i < emptyBars; i++) {
-            bar.append(EMPTY_CHAR);
-        }
-
-        MutableText message = Text.literal(bar.toString())
-            .formatted(Formatting.GREEN)
-            .append(Text.literal(" " + percentage + "%")
-                .formatted(Formatting.WHITE));
-
+        String bar = buildProgressBar(current, max, percentage);
+        MutableText message = Text.literal(bar);
         sendActionBar(player, message);
     }
 
-    /**
-     * Send a text message to the player's action bar.
-     *
-     * @param player The player to send to
-     * @param message The message to send
-     */
     public static void sendActionBar(ServerPlayerEntity player, Text message) {
         player.networkHandler.sendPacket(new OverlayMessageS2CPacket(message));
     }
 
-    /**
-     * Send activation success message.
-     *
-     * @param player The player to send to
-     */
     public static void sendActivationSuccess(ServerPlayerEntity player) {
-        Text message = Text.literal("✓ ACTIVATED!")
-            .formatted(Formatting.GREEN, Formatting.BOLD);
+        MutableText message = Text.literal("");
+        message.append(Text.literal("(").formatted(Formatting.GOLD, Formatting.BOLD));
+        message.append(Text.literal("i").formatted(Formatting.RED, Formatting.BOLD));
+        message.append(Text.literal(")").formatted(Formatting.GOLD, Formatting.BOLD));
+        message.append(Text.literal(" "));
+        message.append(Text.literal("ACTIVATED!").formatted(Formatting.GREEN, Formatting.BOLD));
         sendActionBar(player, message);
     }
 
-    /**
-     * Send cooldown message.
-     *
-     * @param player The player to send to
-     */
     public static void sendCooldownMessage(ServerPlayerEntity player) {
         Text message = Text.literal("Cooldown...")
             .formatted(Formatting.RED);
         sendActionBar(player, message);
+    }
+
+    private static String buildProgressBar(int current, int max, int percentage) {
+        int rounded = Math.round(percentage);
+        int greenBars = rounded / 10;
+
+        if (rounded == 0) {
+            return FILLED_BAR + "╞" + EMPTY_BAR + "══════════" + FILLED_BAR + "╡ 0%";
+        }
+        if (rounded == 100) {
+            return FILLED_BAR + "╞" + FILLED_BAR + "══════════" + FILLED_BAR + "╡ 100%";
+        }
+
+        StringBuilder bar = new StringBuilder();
+        bar.append(FILLED_BAR);
+        bar.append("╞");
+
+        for (int i = 0; i < BAR_LENGTH; i++) {
+            if (i < greenBars) {
+                bar.append(FILLED_BAR).append("═");
+            } else if (i == greenBars) {
+                bar.append(TRANSITION_CHAR).append("▰");
+            } else {
+                bar.append(EMPTY_BAR).append("═");
+            }
+        }
+
+        bar.append(FILLED_BAR).append("╡ ");
+        bar.append(rounded);
+        bar.append("%");
+
+        return bar.toString();
     }
 }

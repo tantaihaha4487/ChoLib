@@ -22,6 +22,9 @@ public class ShiftListener {
     private static final Map<UUID, ItemStack> lastMainHand = new HashMap<>();
     private static final Map<UUID, ItemStack> lastOffHand = new HashMap<>();
 
+    // Track previous sneak state to detect transitions (not sneaking → sneaking)
+    private static final Map<UUID, Boolean> wasSneaking = new HashMap<>();
+
     public static void init() {
         if (initialized) {
             return;
@@ -50,19 +53,24 @@ public class ShiftListener {
             UUID playerUuid = handler.player.getUuid();
             lastMainHand.remove(playerUuid);
             lastOffHand.remove(playerUuid);
+            wasSneaking.remove(playerUuid);
+            lastSneakTick.remove(playerUuid);
         });
     }
 
     private static void checkSneakState(ServerPlayerEntity player) {
-        // Check if player just started sneaking (wasn't sneaking before)
-        // We track this manually since Fabric doesn't have a direct "started sneaking" event
-        if (player.isSneaking()) {
-            // We need to detect the moment they START sneaking
-            // Since we check every tick, we'll use a simple cooldown per player
-            if (canRecordSneak(player)) {
-                ShiftManager.getInstance().handleSneak(player);
-            }
+        UUID uuid = player.getUuid();
+        boolean currentlySneaking = player.isSneaking();
+        boolean previouslySneaking = wasSneaking.getOrDefault(uuid, false);
+
+        // Only count shift on transition: not sneaking → sneaking
+        // This prevents long-press from counting as multiple presses
+        if (currentlySneaking && !previouslySneaking) {
+            ShiftManager.getInstance().handleSneak(player);
         }
+
+        // Update the tracking state
+        wasSneaking.put(uuid, currentlySneaking);
     }
 
     private static final Map<UUID, Long> lastSneakTick = new HashMap<>();
