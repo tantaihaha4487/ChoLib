@@ -6,6 +6,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.registry.tag.TagKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.thanachot.choLib.api.ShiftActivationHandler;
@@ -352,10 +353,17 @@ public class ShiftManager {
     public void onServerTick() {
         long currentTick = getCurrentTick();
 
-        // Clean up expired trackers
         playerTrackers.entrySet().removeIf(entry -> {
             PlayerShiftTracker tracker = entry.getValue();
-            // Remove if no recent activity and not active
+            UUID playerUuid = entry.getKey();
+
+            if (tracker.hasShownBar() && !tracker.isWindowActive(currentTick)) {
+                ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerUuid);
+                if (player != null) {
+                    ActionBarHelper.sendActionBar(player, Text.literal(""));
+                }
+            }
+
             return !activeAbilities.containsKey(entry.getKey()) &&
                    tracker.getPressCount(currentTick) == 0 &&
                    !tracker.isOnCooldown(currentTick);

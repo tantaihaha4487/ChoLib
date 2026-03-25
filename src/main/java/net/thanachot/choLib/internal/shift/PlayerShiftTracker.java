@@ -15,6 +15,7 @@ public class PlayerShiftTracker {
     private final Deque<Long> pressTimestamps;
     private long lastActivationTime;
     private boolean isOnCooldown;
+    private boolean hasShownBar;
     private int windowTicks;
     private int cooldownTicks;
 
@@ -23,6 +24,7 @@ public class PlayerShiftTracker {
         this.pressTimestamps = new ArrayDeque<>();
         this.lastActivationTime = 0;
         this.isOnCooldown = false;
+        this.hasShownBar = false;
         this.windowTicks = windowTicks;
         this.cooldownTicks = cooldownTicks;
     }
@@ -34,20 +36,17 @@ public class PlayerShiftTracker {
      * @return Current press count in window, or 0 if on cooldown
      */
     public int recordPress(long currentTick) {
-        // Check cooldown
         if (isOnCooldown) {
             if (currentTick - lastActivationTime >= cooldownTicks) {
                 isOnCooldown = false;
             } else {
-                return 0; // Still on cooldown
+                return 0;
             }
         }
 
-        // Clean old presses outside window
         cleanOldPresses(currentTick);
-
-        // Record new press
         pressTimestamps.addLast(currentTick);
+        hasShownBar = true;
 
         return pressTimestamps.size();
     }
@@ -73,6 +72,7 @@ public class PlayerShiftTracker {
         lastActivationTime = currentTick;
         isOnCooldown = true;
         pressTimestamps.clear();
+        hasShownBar = false;
     }
 
     /**
@@ -82,6 +82,7 @@ public class PlayerShiftTracker {
         pressTimestamps.clear();
         lastActivationTime = 0;
         isOnCooldown = false;
+        hasShownBar = false;
     }
 
     /**
@@ -112,6 +113,15 @@ public class PlayerShiftTracker {
             isOnCooldown = false;
         }
         return isOnCooldown;
+    }
+
+    public boolean hasShownBar() {
+        return hasShownBar;
+    }
+
+    public boolean isWindowActive(long currentTick) {
+        cleanOldPresses(currentTick);
+        return !pressTimestamps.isEmpty();
     }
 
     public void updateWindowTicks(int windowTicks) {
