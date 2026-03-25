@@ -22,54 +22,70 @@ import java.util.*;
 import java.util.function.Predicate;
 
 public class ShiftManager {
+    private static final String GLOBAL_MOD_ID = "global";
     private static ShiftManager instance;
 
-    private int maxProgress = 10;
-    private int windowTicks = 60;
-    private int cooldownTicks = 40;
+    private final Map<String, ModSettings> modSettings;
+    private final Map<ShiftHand, Map<Item, String>> itemModIds;
+    private final Map<ShiftHand, Map<TagKey<Item>, String>> tagModIds;
+    private final Map<ShiftHand, Map<Class<? extends Item>, String>> classModIds;
+    private final Map<ShiftHand, List<PredicateModEntry>> predicateHandlers;
 
-    private final Map<ShiftHand, Map<Item, ShiftActivationHandler>> itemHandlers;
-    private final Map<ShiftHand, Map<TagKey<Item>, ShiftActivationHandler>> tagHandlers;
-    private final Map<ShiftHand, Map<Class<? extends Item>, ShiftActivationHandler>> classHandlers;
-    private final Map<ShiftHand, List<PredicateEntry>> predicateHandlers;
-
-    private final Map<UUID, PlayerShiftTracker> playerTrackers;
-    private final Map<UUID, ActiveAbility> activeAbilities;
+    private final Map<ModPlayerKey, PlayerShiftTracker> playerTrackers;
+    private final Map<ModPlayerKey, ActiveAbility> activeAbilities;
+    private final Map<ShiftActivationHandler, String> handlerModIds;
 
     private MinecraftServer server;
 
-    private static class PredicateEntry {
+    public static class ModSettings {
+        int maxProgress = 10;
+        int windowTicks = 60;
+        int cooldownTicks = 40;
+
+        ModSettings() {}
+    }
+
+    private static class PredicateModEntry {
         final Predicate<ItemStack> predicate;
         final ShiftActivationHandler handler;
+        final String modId;
 
-        PredicateEntry(Predicate<ItemStack> predicate, ShiftActivationHandler handler) {
+        PredicateModEntry(Predicate<ItemStack> predicate, ShiftActivationHandler handler, String modId) {
             this.predicate = predicate;
             this.handler = handler;
+            this.modId = modId;
         }
     }
 
     private static class ActiveAbility {
         final ItemStack stack;
         final Hand hand;
+        final String modId;
 
-        ActiveAbility(ItemStack stack, Hand hand) {
+        ActiveAbility(ItemStack stack, Hand hand, String modId) {
             this.stack = stack;
             this.hand = hand;
+            this.modId = modId;
         }
     }
 
     private ShiftManager() {
-        itemHandlers = new EnumMap<>(ShiftHand.class);
-        tagHandlers = new EnumMap<>(ShiftHand.class);
-        classHandlers = new EnumMap<>(ShiftHand.class);
+        modSettings = new HashMap<>();
+        modSettings.put(GLOBAL_MOD_ID, new ModSettings());
+
+        itemModIds = new EnumMap<>(ShiftHand.class);
+        tagModIds = new EnumMap<>(ShiftHand.class);
+        classModIds = new EnumMap<>(ShiftHand.class);
         predicateHandlers = new EnumMap<>(ShiftHand.class);
+
         playerTrackers = new HashMap<>();
         activeAbilities = new HashMap<>();
+        handlerModIds = new HashMap<>();
 
         for (ShiftHand hand : ShiftHand.values()) {
-            itemHandlers.put(hand, new HashMap<>());
-            tagHandlers.put(hand, new HashMap<>());
-            classHandlers.put(hand, new HashMap<>());
+            itemModIds.put(hand, new HashMap<>());
+            tagModIds.put(hand, new HashMap<>());
+            classModIds.put(hand, new HashMap<>());
             predicateHandlers.put(hand, new ArrayList<>());
         }
     }
@@ -89,168 +105,301 @@ public class ShiftManager {
 
     // Registration
 
-    public void registerItem(Item item, ShiftHand hand, ShiftActivationHandler handler) {
+    public void registerItem(String modId, Item item, ShiftHand hand, ShiftActivationHandler handler) {
         if (ShiftItemRegisterEvent.EVENT.invoker().onRegister(item, ShiftRegistrationType.ITEM, hand) == ActionResult.FAIL) return;
-        itemHandlers.get(hand).put(item, handler);
+        itemModIds.get(hand).put(item, modId);
+        handlerModIds.put(handler, modId);
+        getOrCreateSettings(modId);
+    }
+
+    public void registerTag(String modId, TagKey<Item> tag, ShiftHand hand, ShiftActivationHandler handler) {
+        if (ShiftItemRegisterEvent.EVENT.invoker().onRegister(tag, ShiftRegistrationType.TAG, hand) == ActionResult.FAIL) return;
+        tagModIds.get(hand).put(tag, modId);
+        handlerModIds.put(handler, modId);
+        getOrCreateSettings(modId);
+    }
+
+    public void registerItemClass(String modId, Class<? extends Item> itemClass, ShiftHand hand, ShiftActivationHandler handler) {
+        if (ShiftItemRegisterEvent.EVENT.invoker().onRegister(itemClass, ShiftRegistrationType.CLASS, hand) == ActionResult.FAIL) return;
+        classModIds.get(hand).put(itemClass, modId);
+        handlerModIds.put(handler, modId);
+        getOrCreateSettings(modId);
+    }
+
+    public void registerPredicate(String modId, Predicate<ItemStack> predicate, ShiftHand hand, ShiftActivationHandler handler) {
+        if (ShiftItemRegisterEvent.EVENT.invoker().onRegister(predicate, ShiftRegistrationType.PREDICATE, hand) == ActionResult.FAIL) return;
+        predicateHandlers.get(hand).add(new PredicateModEntry(predicate, handler, modId));
+        handlerModIds.put(handler, modId);
+        getOrCreateSettings(modId);
+    }
+
+    // Backwards-compatible registration (uses global modId)
+
+    public void registerItem(Item item, ShiftHand hand, ShiftActivationHandler handler) {
+        registerItem(GLOBAL_MOD_ID, item, hand, handler);
     }
 
     public void registerTag(TagKey<Item> tag, ShiftHand hand, ShiftActivationHandler handler) {
-        if (ShiftItemRegisterEvent.EVENT.invoker().onRegister(tag, ShiftRegistrationType.TAG, hand) == ActionResult.FAIL) return;
-        tagHandlers.get(hand).put(tag, handler);
+        registerTag(GLOBAL_MOD_ID, tag, hand, handler);
     }
 
     public void registerItemClass(Class<? extends Item> itemClass, ShiftHand hand, ShiftActivationHandler handler) {
-        if (ShiftItemRegisterEvent.EVENT.invoker().onRegister(itemClass, ShiftRegistrationType.CLASS, hand) == ActionResult.FAIL) return;
-        classHandlers.get(hand).put(itemClass, handler);
+        registerItemClass(GLOBAL_MOD_ID, itemClass, hand, handler);
     }
 
     public void registerPredicate(Predicate<ItemStack> predicate, ShiftHand hand, ShiftActivationHandler handler) {
-        if (ShiftItemRegisterEvent.EVENT.invoker().onRegister(predicate, ShiftRegistrationType.PREDICATE, hand) == ActionResult.FAIL) return;
-        predicateHandlers.get(hand).add(new PredicateEntry(predicate, handler));
+        registerPredicate(GLOBAL_MOD_ID, predicate, hand, handler);
     }
 
     // Configuration
 
+    private ModSettings getOrCreateSettings(String modId) {
+        return modSettings.computeIfAbsent(modId, k -> new ModSettings());
+    }
+
+    private ModSettings getSettings(String modId) {
+        return modSettings.getOrDefault(modId, modSettings.get(GLOBAL_MOD_ID));
+    }
+
+    public void setMaxProgress(String modId, int maxProgress) {
+        getOrCreateSettings(modId).maxProgress = maxProgress;
+    }
+
+    public int getMaxProgress(String modId) {
+        return getSettings(modId).maxProgress;
+    }
+
+    public void setWindowTicks(String modId, int ticks) {
+        getOrCreateSettings(modId).windowTicks = ticks;
+    }
+
+    public int getWindowTicks(String modId) {
+        return getSettings(modId).windowTicks;
+    }
+
+    public void setCooldownTicks(String modId, int ticks) {
+        getOrCreateSettings(modId).cooldownTicks = ticks;
+    }
+
+    public int getCooldownTicks(String modId) {
+        return getSettings(modId).cooldownTicks;
+    }
+
+    // Backwards-compatible config (uses global modId)
+
     public void setMaxProgress(int maxProgress) {
-        this.maxProgress = maxProgress;
+        setMaxProgress(GLOBAL_MOD_ID, maxProgress);
     }
 
     public int getMaxProgress() {
-        return maxProgress;
+        return getMaxProgress(GLOBAL_MOD_ID);
     }
 
     public void setWindowTicks(int ticks) {
-        this.windowTicks = ticks;
-        playerTrackers.values().forEach(t -> t.updateWindowTicks(ticks));
+        setWindowTicks(GLOBAL_MOD_ID, ticks);
+    }
+
+    public int getWindowTicks() {
+        return getWindowTicks(GLOBAL_MOD_ID);
     }
 
     public void setCooldownTicks(int ticks) {
-        this.cooldownTicks = ticks;
-        playerTrackers.values().forEach(t -> t.updateCooldownTicks(ticks));
+        setCooldownTicks(GLOBAL_MOD_ID, ticks);
+    }
+
+    public int getCooldownTicks() {
+        return getCooldownTicks(GLOBAL_MOD_ID);
     }
 
     // Core Logic
 
     public void handleSneak(ServerPlayerEntity player) {
-        UUID uuid = player.getUuid();
+        UUID playerUuid = player.getUuid();
         long currentTick = getCurrentTick();
 
-        PlayerShiftTracker tracker = playerTrackers.computeIfAbsent(uuid, u -> new PlayerShiftTracker(u, windowTicks, cooldownTicks));
         HandResult result = findHandler(player);
         if (result == null) return;
+
+        String modId = result.modId;
+        ModSettings settings = getSettings(modId);
+        ModPlayerKey key = new ModPlayerKey(modId, playerUuid);
+
+        PlayerShiftTracker tracker = playerTrackers.computeIfAbsent(key, k -> new PlayerShiftTracker(playerUuid, settings.windowTicks, settings.cooldownTicks));
 
         int pressCount = tracker.recordPress(currentTick);
         if (pressCount == 0) return;
 
-        if (pressCount >= maxProgress) {
+        if (pressCount >= settings.maxProgress) {
             if (ShiftActivationEvent.EVENT.invoker().onActivate(player, result.stack, result.hand) == ActionResult.FAIL) return;
 
             if (result.handler.activate(player, result.stack, result.hand) == ActionResult.SUCCESS) {
                 tracker.activate(currentTick);
-                activeAbilities.put(uuid, new ActiveAbility(result.stack, result.hand));
+                activeAbilities.put(key, new ActiveAbility(result.stack, result.hand, modId));
                 ActionBarHelper.sendActivationSuccess(player);
 
-                System.out.println("[ChoLib] " + result.stack.getName().getString() + " shift ability activated for " + player.getName().getString());
+                System.out.println("[ChoLib] (" + modId + ") " + result.stack.getName().getString() + " shift ability activated for " + player.getName().getString());
             }
         } else {
-            int percentage = (pressCount * 100) / maxProgress;
-            if (ShiftProgressEvent.EVENT.invoker().onProgress(player, pressCount, maxProgress, percentage) == ActionResult.FAIL) return;
-            ActionBarHelper.sendProgressBar(player, pressCount, maxProgress, percentage);
+            int percentage = (pressCount * 100) / settings.maxProgress;
+            if (ShiftProgressEvent.EVENT.invoker().onProgress(player, pressCount, settings.maxProgress, percentage) == ActionResult.FAIL) return;
+            ActionBarHelper.sendProgressBar(player, pressCount, settings.maxProgress, percentage);
         }
     }
 
     public void checkItemSwap(ServerPlayerEntity player) {
-        UUID uuid = player.getUuid();
-        ActiveAbility active = activeAbilities.get(uuid);
-        if (active == null) return;
+        UUID playerUuid = player.getUuid();
 
-        ItemStack currentMain = player.getMainHandStack();
-        ItemStack currentOff = player.getOffHandStack();
-        boolean stillHolding;
+        for (Iterator<Map.Entry<ModPlayerKey, ActiveAbility>> it = activeAbilities.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<ModPlayerKey, ActiveAbility> entry = it.next();
+            ModPlayerKey key = entry.getKey();
 
-        if (active.hand == Hand.MAIN_HAND) {
-            stillHolding = ItemStack.areEqual(currentMain, active.stack);
-        } else {
-            stillHolding = ItemStack.areEqual(currentOff, active.stack);
+            if (!key.playerUuid().equals(playerUuid)) continue;
+
+            ActiveAbility active = entry.getValue();
+            ItemStack currentMain = player.getMainHandStack();
+            ItemStack currentOff = player.getOffHandStack();
+            boolean stillHolding;
+
+            if (active.hand == Hand.MAIN_HAND) {
+                stillHolding = ItemStack.areEqual(currentMain, active.stack);
+            } else {
+                stillHolding = ItemStack.areEqual(currentOff, active.stack);
+            }
+
+            if (!stillHolding) {
+                it.remove();
+                deactivateTracker(key);
+                ShiftDeactivationEvent.EVENT.invoker().onDeactivate(player, active.stack, active.hand, ShiftDeactivationReason.ITEM_SWAP);
+            }
         }
-
-        if (!stillHolding) deactivate(uuid, ShiftDeactivationReason.ITEM_SWAP);
     }
 
     private HandResult findHandler(ServerPlayerEntity player) {
         ItemStack mainHand = player.getMainHandStack();
         if (!mainHand.isEmpty()) {
-            ShiftActivationHandler handler = findHandlerForStack(mainHand, ShiftHand.MAIN_HAND);
-            if (handler != null) return new HandResult(handler, mainHand, Hand.MAIN_HAND);
+            HandlerResult hr = findHandlerForStack(mainHand, ShiftHand.MAIN_HAND);
+            if (hr != null) return new HandResult(hr.handler, mainHand, Hand.MAIN_HAND, hr.modId);
         }
 
         ItemStack offHand = player.getOffHandStack();
         if (!offHand.isEmpty()) {
-            ShiftActivationHandler handler = findHandlerForStack(offHand, ShiftHand.OFF_HAND);
-            if (handler != null) return new HandResult(handler, offHand, Hand.OFF_HAND);
+            HandlerResult hr = findHandlerForStack(offHand, ShiftHand.OFF_HAND);
+            if (hr != null) return new HandResult(hr.handler, offHand, Hand.OFF_HAND, hr.modId);
         }
 
         return null;
     }
 
-    private ShiftActivationHandler findHandlerForStack(ItemStack stack, ShiftHand hand) {
+    private HandlerResult findHandlerForStack(ItemStack stack, ShiftHand hand) {
         Item item = stack.getItem();
 
-        ShiftActivationHandler handler = itemHandlers.get(hand).get(item);
-        if (handler != null) return handler;
-
-        for (Map.Entry<TagKey<Item>, ShiftActivationHandler> entry : tagHandlers.get(hand).entrySet()) {
-            if (stack.isIn(entry.getKey())) return entry.getValue();
+        String modId = itemModIds.get(hand).get(item);
+        if (modId != null) {
+            ShiftActivationHandler handler = handlerModIds.entrySet().stream()
+                .filter(e -> e.getValue().equals(modId))
+                .findFirst()
+                .map(Map.Entry::getKey)
+                .orElse(null);
+            if (handler != null) return new HandlerResult(handler, modId);
         }
 
-        for (Map.Entry<Class<? extends Item>, ShiftActivationHandler> entry : classHandlers.get(hand).entrySet()) {
-            if (entry.getKey().isInstance(item)) return entry.getValue();
+        for (Map.Entry<TagKey<Item>, String> entry : tagModIds.get(hand).entrySet()) {
+            if (stack.isIn(entry.getKey())) {
+                String tagModId = entry.getValue();
+                ShiftActivationHandler handler = handlerModIds.entrySet().stream()
+                    .filter(e -> e.getValue().equals(tagModId))
+                    .findFirst()
+                    .map(Map.Entry::getKey)
+                    .orElse(null);
+                if (handler != null) return new HandlerResult(handler, tagModId);
+            }
         }
 
-        for (PredicateEntry entry : predicateHandlers.get(hand)) {
-            if (entry.predicate.test(stack)) return entry.handler;
+        for (Map.Entry<Class<? extends Item>, String> entry : classModIds.get(hand).entrySet()) {
+            if (entry.getKey().isInstance(item)) {
+                String classModId = entry.getValue();
+                ShiftActivationHandler handler = handlerModIds.entrySet().stream()
+                    .filter(e -> e.getValue().equals(classModId))
+                    .findFirst()
+                    .map(Map.Entry::getKey)
+                    .orElse(null);
+                if (handler != null) return new HandlerResult(handler, classModId);
+            }
+        }
+
+        for (PredicateModEntry entry : predicateHandlers.get(hand)) {
+            if (entry.predicate.test(stack)) {
+                return new HandlerResult(entry.handler, entry.modId);
+            }
         }
 
         return null;
+    }
+
+    private static class HandlerResult {
+        final ShiftActivationHandler handler;
+        final String modId;
+
+        HandlerResult(ShiftActivationHandler handler, String modId) {
+            this.handler = handler;
+            this.modId = modId;
+        }
     }
 
     private static class HandResult {
         final ShiftActivationHandler handler;
         final ItemStack stack;
         final Hand hand;
+        final String modId;
 
-        HandResult(ShiftActivationHandler handler, ItemStack stack, Hand hand) {
+        HandResult(ShiftActivationHandler handler, ItemStack stack, Hand hand, String modId) {
             this.handler = handler;
             this.stack = stack;
             this.hand = hand;
+            this.modId = modId;
         }
     }
 
     // Deactivation
 
-    public void deactivate(UUID uuid) {
-        deactivate(uuid, ShiftDeactivationReason.MANUAL);
+    public void deactivate(String modId, UUID playerUuid) {
+        ModPlayerKey key = new ModPlayerKey(modId, playerUuid);
+        ActiveAbility active = activeAbilities.remove(key);
+        if (active != null && server != null) {
+            ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerUuid);
+            if (player != null) ShiftDeactivationEvent.EVENT.invoker().onDeactivate(player, active.stack, active.hand, ShiftDeactivationReason.MANUAL);
+        }
+        deactivateTracker(key);
     }
 
-    public void deactivate(UUID uuid, ShiftDeactivationReason reason) {
-        ActiveAbility active = activeAbilities.remove(uuid);
-        PlayerShiftTracker tracker = playerTrackers.get(uuid);
-        if (tracker != null) tracker.reset();
+    public void deactivate(UUID playerUuid) {
+        deactivate(GLOBAL_MOD_ID, playerUuid);
+    }
 
-        if (active != null && server != null) {
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(uuid);
-            if (player != null) ShiftDeactivationEvent.EVENT.invoker().onDeactivate(player, active.stack, active.hand, reason);
+    public void deactivateAll(String modId) {
+        for (Iterator<ModPlayerKey> it = activeAbilities.keySet().iterator(); it.hasNext(); ) {
+            ModPlayerKey key = it.next();
+            if (key.modId().equals(modId)) {
+                it.remove();
+                deactivateTracker(key);
+            }
         }
     }
 
     public void deactivateAll() {
-        for (UUID uuid : new ArrayList<>(activeAbilities.keySet())) {
-            deactivate(uuid, ShiftDeactivationReason.MANUAL);
-        }
+        deactivateAll(GLOBAL_MOD_ID);
     }
 
-    public boolean isActive(UUID uuid) {
-        return activeAbilities.containsKey(uuid);
+    private void deactivateTracker(ModPlayerKey key) {
+        playerTrackers.remove(key);
+    }
+
+    public boolean isActive(String modId, UUID playerUuid) {
+        return activeAbilities.containsKey(new ModPlayerKey(modId, playerUuid));
+    }
+
+    public boolean isActive(UUID playerUuid) {
+        return isActive(GLOBAL_MOD_ID, playerUuid);
     }
 
     // Cleanup
@@ -258,16 +407,21 @@ public class ShiftManager {
     public void onServerTick() {
         long currentTick = getCurrentTick();
 
-        playerTrackers.entrySet().removeIf(entry -> {
+        for (Iterator<Map.Entry<ModPlayerKey, PlayerShiftTracker>> it = playerTrackers.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<ModPlayerKey, PlayerShiftTracker> entry = it.next();
+            ModPlayerKey key = entry.getKey();
             PlayerShiftTracker tracker = entry.getValue();
-            UUID uuid = entry.getKey();
 
             if (tracker.hasShownBar() && !tracker.isWindowActive(currentTick)) {
-                ServerPlayerEntity player = server.getPlayerManager().getPlayer(uuid);
+                ServerPlayerEntity player = server.getPlayerManager().getPlayer(key.playerUuid());
                 if (player != null) ActionBarHelper.sendActionBar(player, Text.literal(""));
             }
 
-            return !activeAbilities.containsKey(uuid) && tracker.getPressCount(currentTick) == 0 && !tracker.isOnCooldown(currentTick);
-        });
+            boolean shouldRemove = !activeAbilities.containsKey(key) &&
+                tracker.getPressCount(currentTick) == 0 &&
+                !tracker.isOnCooldown(currentTick);
+
+            if (shouldRemove) it.remove();
+        }
     }
 }
